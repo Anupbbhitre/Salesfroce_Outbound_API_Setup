@@ -48,19 +48,19 @@ Auth URL
 
 /force-app/main/default
   ├── classes/
-  │    ├── WireBankService.cls        # Main callout logic
-  │    ├── WireBankServiceTest.cls    # Unit tests
-  │    ├── WireAuthService.cls        # Token management
-  │    ├── WireAuthServiceTest.cls
+  │    ├── BankAddresHandler.cls        # Main callout logic
+  |    ├── BankAddresHandlerTest.cls
+  │    ├── AwsAccountCallout.cls        # Token management
+  │    ├── AwsAccountCalloutTest.cls
   │
   ├── triggers/
-  │    ├── BankInformationTrigger.trigger
-  │    ├── BankInformationTriggerHandler.cls
+  │    ├── BankTrigger.trigger
+  │    ├── BankTriggerHandler.cls
   │
   ├── objects/
-  │    ├── Wire_API_Token__c.object   # Custom object for token storage
+  │    ├── Account_Access_Token__c.object   # Custom object for token storage
   │
   ├── settings/
-  │    ├── Wire_API_Config__c.setting # Custom setting for environment configs
+  │    ├── AWS_Credentials__c.setting # Custom setting for environment configs
   │
   └── README.md
