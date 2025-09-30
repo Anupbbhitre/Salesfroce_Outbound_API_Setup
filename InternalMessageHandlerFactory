@@ -1,0 +1,13 @@
+public with sharing class InternalMessageHandlerFactory {
+
+    public static InternalMessageHandler newInstance(String action) {
+        switch on action {
+            when 'BankAddressCall' {
+                return new BankAddressHandler();
+            }
+            when else {
+                return null;
+            }
+        }
+    }
+}
