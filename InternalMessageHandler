@@ -1,0 +1,3 @@
+public interface InternalMessageHandler {
+    void handleMessage(String json);
+}
