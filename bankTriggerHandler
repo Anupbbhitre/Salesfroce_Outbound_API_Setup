@@ -1,0 +1,50 @@
+/**
+ * @description Bank Trigger Handler
+ * @author Anup Bhitre
+ * @version 1.0
+ */
+public class bankTriggerHandler extends TriggerHandler {
+    
+    public override void AfterInsert(Map<Id, SObject> newItems) {
+        try {
+            Map<Id, Bank_Information__c> newBankInfoMap = (Map<Id, Bank_Information__c>) newItems;
+            updateWireNumber(newBankInfoMap, null);
+        } catch (Exception e) {
+          system.debug('Exception Was Genetated ' +e.getMessage());
+        } finally {
+        }
+    }
+
+    public override void AfterUpdate(Map<Id, SObject> newItems, Map<Id, SObject> oldItems) {
+        try {
+         	Map<Id, Bank_Information__c> newBankInfoMap = (Map<Id, Bank_Information__c>) newItems;
+            Map<Id, Bank_Information__c> oldBankInfoMap = (Map<Id, Bank_Information__c>) oldItems;
+            updateWireNumber(newBankInfoMap, oldBankInfoMap);
+            
+        } catch (Exception e) {
+            System.debug(e.getMessage());
+        } finally {
+        }
+    }
+ 
+    public static void updateWireNumber(Map<Id, Bank_Information__c> newBankInfoMap, Map<Id, Bank_Information__c> oldBankInfoMap) {
+        List<InternalMessage__e> makeBankAddsCallout = new List<InternalMessage__e>();
+        
+        for (Bank_Information__c bkInfo : newBankInfoMap.values()) {
+            Bank_Information__c oldBkInfo = oldBankInfoMap?.get(bkInfo.Id);
+            String inUseBank = bkInfo.InUse_Bank__c;
+            Integer bkNo = Integer.valueOf(inUseBank.split(' ')[1]);
+            String bankWRTNum = bkNo == 1 ? 'Account_Number__c' : 'Account_Number_' + bkNo + '__c';
+            if(bkInfo.get(bankWRTNum) != oldBkInfo?.get(bankWRTNum) && bkInfo?.get(bankWRTNum) != null) {
+                BankAddressHandler.AccountNoCheck bankInfo = new BankAddressHandler.AccountNoCheck();
+                bankInfo.BankInfoId = bkInfo.Id;
+                String jsonOutput = JSON.serialize(bankInfo);
+                InternalMessage__e  evt = new InternalMessage__e (Action__c = 'BankAddressCall', Payload__c = jsonOutput);
+                makeBankAddsCallout.add(evt);
+            }
+        }
+       if (makeBankAddsCallout?.isEmpty() == FALSE) {
+            EventBus.publish(makeBankAddsCallout);
+        }
+    }    
+}
