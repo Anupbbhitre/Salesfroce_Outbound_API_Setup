@@ -1,0 +1,22 @@
+public with sharing class InternalMessageSubscriberHandler extends TriggerHandler {
+  
+    public override void AfterInsert(Map<Id, SObject> newItems) {
+        try {
+            List<InternalMessage__e> newMessages =  (List<InternalMessage__e>) newItems.values();
+            for (InternalMessage__e message : newMessages) {
+                InternalMessageHandler handler = InternalMessageHandlerFactory.newInstance(message.Action__c);
+                if (handler != null) {
+                    handler.handleMessage(message.Payload__c);
+                }
+            }
+        }
+        catch (Exception ex) {
+        }
+        finally {
+        }
+    }
+    public override Boolean IsDisabled() {
+        return false;
+    }
+    
+}
