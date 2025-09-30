@@ -1,0 +1,135 @@
+public class AwsAccountCallout extends HDFCClass_HDFC {
+    
+    static final String myClassName = AwsAccountCallout.class.getName(); 
+    static final String GRANT_TYPE = '###################';
+    static final String CONTENT_TYPE = '###############';
+    static final String SCOPE = '############d';
+
+    public static Boolean doUpsert = false;
+
+    public static HttpResponse callBankAddress(String AccountNumber, String compName) {
+        
+        Account_Access_Token__c accessToken = getAccessToken(compName);
+        AWS_Credentials__c crdVal = AWS_Credentials__c.getInstance('Bank-Address');
+        if (accessToken == null) {
+            logError('No Access token Found');
+            return null;
+        }
+        HttpRequest req = createHttpRequest(AccountNumber, accessToken.Access_Token__c, crdVal, compName);
+        HttpResponse res = sendHttpRequest(req);
+        logResponse('callWireBankAddress', res);
+        
+        if (doUpsert) {
+            upsert accessToken;   
+        }
+        return res;
+    }
+    
+    private static HttpRequest createHttpRequest(String urlParm, String accessToken, AWS_Credentials__c crdVal, String compName) {
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint(crdVal.End_Point__c + urlParm);
+        logWithClass('end Point', 'AWS Services' + (crdVal.End_Point__c + urlParm), myClassName);
+        req.setMethod('GET');
+        req.setHeader('Authorization', 'Bearer ' + accessToken);
+        req.setHeader('channel', 'Salesforce');
+        req.setHeader('organization-id', compName);
+        req.setHeader('uuid', Utils.generateUUID());
+        return req;
+    }
+    
+    private static HttpResponse sendHttpRequest(HttpRequest req) {
+        Http http = new Http();
+        HttpResponse res;
+        try {
+            res = http.send(req);
+        } catch (Exception e) {
+            logError('Error during HTTP callout: ' + e.getMessage());
+            throw new CalloutException('Error during HTTP callout: ' + e.getMessage());
+        }
+        return res;
+    }
+    
+    private static void logResponse(string msg, HttpResponse res) {
+        logWithClass(msg, res.getStatusCode() + ', ' + res.getBody(), myClassName);
+        logCommit();
+    }
+    
+    public static Account_Access_Token__c getAccessToken(String accessTokenName) {
+        DateTime now = System.now();
+        Account_Access_Token__c exToken;
+        
+        try {
+            exToken = [SELECT Id, Access_Token__c, Token_Expiry_Time__c FROM Account_Access_Token__c WHERE Name =: accessTokenName AND Token_Expiry_Time__c != NULL ORDER BY LastModifiedDate DESC LIMIT 1] ?? null;
+            if (exToken != null && exToken?.Access_Token__c != null && exToken?.Token_Expiry_Time__c > now) { 
+                return exToken;
+            }
+        } catch (Exception e) {
+            logError('Error retrieving access token from database: ' + e.getMessage());
+        }
+        
+        return fetchNewAccessToken(exToken, accessTokenName);
+    }
+    
+    public static Account_Access_Token__c fetchNewAccessToken(Account_Access_Token__c exToken, String accessTokenName) {
+        Account_Access_Token__c newToken;
+        HttpResponse res;
+        
+        try {
+            
+            AWS_Credentials__c crdAcc;
+            System.debug('accessTokenName: '+ accessTokenName);
+            if(accessTokenName == 'HDFC') {
+                crdAcc = AWS_Credentials__c.getInstance('WRN Access Token HDFC');
+            } else if (accessTokenName == 'HDFCLOAN'){
+                crdAcc = AWS_Credentials__c.getInstance('WRN Access Token HDFCLOAN');
+            }
+            
+            System.debug('crdAcc: '+ crdAcc);
+            
+            HttpRequest req = createTokenRequest(crdAcc);
+            res = sendHttpRequest(req);
+            
+            if (res.getStatusCode() == 200) {
+                TokenResponse tr = (TokenResponse) JSON.deserialize(res.getBody(), TokenResponse.class);
+                newToken = new Account_Access_Token__c(); 
+                newToken.Name = accessTokenName;
+                newToken.Id = exToken?.Id;
+                newToken.Access_Token__c = tr.access_token;
+                newToken.Token_Expiry_Time__c = System.now().addSeconds(tr.expires_in - 60);
+                doUpsert = true;
+            } else {
+                logError('Failed to get access token: ' + res.getBody());
+            }
+        } catch (Exception ex) {
+            logError('Error during token request: ' + ex.getMessage());
+        }
+        
+        return newToken;
+    }
+    
+    private static HttpRequest createTokenRequest(AWS_Credentials__c crdAcc) {
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint(crdAcc.End_Point__c);
+        req.setMethod('POST');
+        req.setHeader('Content-Type', CONTENT_TYPE);
+        req.setHeader('Cookie', 'XSRF-TOKEN=ef80e4fe-fa30-4f92-800c-9b64ed287073'); 
+        
+        String body = GRANT_TYPE
+                    + '&client_id=' + crdAcc.Client_Id__c
+                    + '&client_secret=' + crdAcc.Client_Secret__c
+                    + '&scope=' + crdAcc.scope__c;
+        
+        req.setBody(body);
+        return req;
+    }
+    
+    private static void logError(String message) {
+     //add loging system here
+    }
+    
+    public class TokenResponse {
+        public String access_token;
+        public Integer expires_in;
+        public String token_type;
+    }
+}
