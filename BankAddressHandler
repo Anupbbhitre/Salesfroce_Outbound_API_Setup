@@ -30,7 +30,7 @@ public class BankAddressHandler implements InternalMessageHandler {
     }
     
     /**
-     * Asynchronously processes wire bank address lookup and updates
+     * Asynchronously processes Account bank address lookup and updates
      * param bankInfoId the ID of the Financial Institution Information record
      */
     @future(callout=true)
@@ -50,7 +50,7 @@ public class BankAddressHandler implements InternalMessageHandler {
             String accNo = (String)bankInfo.get(accFieldName);
             
             if (bkNo <= MAX_BANK_NUMBER && String.isBlank(accNo) != true) {
-                HttpResponse res = AwsWireCallout.callWireBankAddress(accNo, compName);
+                HttpResponse res = AwsAccountCallout.callBankAddress(accNo, compName);
                 if(res == null) {
                    
                 } else {
