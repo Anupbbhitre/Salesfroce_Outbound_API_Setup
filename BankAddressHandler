@@ -1,0 +1,105 @@
+public class BankAddressHandler implements InternalMessageHandler {
+    
+    private static final String CLASS_NAME = BankAddressHandler.class.getName();
+    private static final Integer MAX_BANK_NUMBER = 16;
+    private static final Integer SUCCESS_STATUS_CODE = 200;
+    
+    private static final string ACCOUNT_NO_PATTERN = 'Account_Number_{0}__c';
+    private static final string ACCOUNT_NO_PRIMARY = 'Account_Number__c';
+    private static final string ADDRESS_FIELD_PATTERN = 'Bank_Address_Bank{0}__{1}__s';
+    
+    /**
+     * Handles incoming wire bank address messages.
+     * @param json the JSON message from bankTriggerHandler
+     * @return void
+     */
+    public void handleMessage(String json) {
+        String methodName = 'handleMessage';
+        
+        try {
+            if(String.isBlank(json)) {  return;  }
+            
+            AccountNoCheck  wObj = (AccountNoCheck )System.JSON.deserialize(json, AccountNoCheck .class);
+            if (String.isBlank(wObj.BankInfoId) == false) {
+                BankAddressAsync(wObj.BankInfoId);
+            } else {
+            }
+        } catch (Exception e) {
+        } finally {
+        }
+    }
+    
+    /**
+     * Asynchronously processes wire bank address lookup and updates
+     * param bankInfoId the ID of the Financial Institution Information record
+     */
+    @future(callout=true)
+    public static void BankAddressAsync(Id bankInfoId) {
+        String methodName = 'BankAddressAsync';
+        
+        try{
+            Bank_Information__c bankInfo = getBankInformation(bankInfoId);
+            if(bankInfo == null) {
+                logWithClass(methodName, 'Bank information not found for ID: '+bankInfoId, CLASS_NAME);
+            }
+            
+            String inUseBank = bankInfo.InUse_Bank__c;
+            String compName = (bankInfo.Opportunity__r.RecordTypeId == Constants.recordType_HDFC ? 'HDFC' : 'HDFCLOAN';
+            Integer bkNo = Integer.valueOf(inUseBank.split(' ')[1]);
+            String accFieldName = (bkNo == 1) ? ACCOUNT_NO_PRIMARY : String.format(ACCOUNT_NO_PATTERN, new List<String>{String.valueOf(bkNo)});
+            String accNo = (String)bankInfo.get(accFieldName);
+            
+            if (bkNo <= MAX_BANK_NUMBER && String.isBlank(accNo) != true) {
+                HttpResponse res = AwsWireCallout.callWireBankAddress(accNo, compName);
+                if(res == null) {
+                   
+                } else {
+                    if (res.getStatusCode() == SUCCESS_STATUS_CODE) {
+                        AccAddResults result = (AccAddResults)System.JSON.deserialize(res.getBody(), AccAddResults.class);
+                        updateBankAddress(bankInfo, bkNo, result.bankAddress);
+                        database.update(bankInfo,false);
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+           
+        } finally {
+            logCommit();
+        }
+        
+    }
+    
+    private static Bank_Information__c getBankInformation(Id bankInfoId) {
+        List<Bank_Information__c> bankInfoTray = bankInfoSelector.getBankInformationById(new Set<Id>{bankInfoId});
+        return (bankInfoTray?.isEmpty() == FALSE) ? bankInfoTray[0] : null;
+    }
+    
+    private static void updateBankAddress(Bank_Information__c bankInfo, Integer bkNo, BankAddress bankAddress) {
+        String bankNum = String.valueOf(bkNo);
+        
+        bankInfo.put(String.format(ADDRESS_FIELD_PATTERN, new List<String>{bankNum, 'Street'}), bankAddress.streetName);
+        bankInfo.put(String.format(ADDRESS_FIELD_PATTERN, new List<String>{bankNum, 'City'}), bankAddress.City);
+        bankInfo.put(String.format(ADDRESS_FIELD_PATTERN, new List<String>{bankNum, 'StateCode'}), bankAddress.state);
+        bankInfo.put(String.format(ADDRESS_FIELD_PATTERN, new List<String>{bankNum, 'PostalCode'}), bankAddress.PostalCode);
+        bankInfo.put(String.format(ADDRESS_FIELD_PATTERN, new List<String>{bankNum, 'CountryCode'}), bankAddress.country);
+    }
+    
+    public class AccountNoCheck  {
+        public String BankInfoId;
+    }
+    
+    public class AccAddResults {
+        public String bankName;
+        public String AccountNumber;
+        public BankAddress bankAddress;
+    }
+    
+    public class BankAddress {
+        public String streetName;
+        public String postalCode;
+        public String state;
+        public String city;
+        public String country;
+    }
+}
